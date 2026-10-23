@@ -1,0 +1,13 @@
+# Project metadata for work-catalog. Edit deliberately; refresh imports changes.
+schema_version = 1
+
+[project]
+id = "bee-cli-7a4737cd"
+purpose = "CLI client for the Bee wearable AI service."
+state = "unknown"
+next_action = "Use the documented entry point to select the next task; confirm owner intent before changing lifecycle. Runtime behavior was not tested."
+tags = ["JavaScript/TypeScript", "repository", "xint"]
+
+[annotations]
+tags = []
+note = ""
