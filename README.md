@@ -63,6 +63,8 @@ bee mcp serve-http [--port N]   # local HTTP, 127.0.0.1, bearer-token auth
 
 Every read, search, and manage capability below is exposed as an MCP tool (`bee_search`, `bee_list_facts`, `bee_get_daily_summary`, …), so the CLI and your assistant work from the same data.
 
+For Bee test users, the thread tools let an assistant chat with the Bee agent: `bee_create_thread`, `bee_send_thread_message`, `bee_wait_thread`, `bee_list_threads`, `bee_get_thread_messages`, and `bee_abort_thread`. Send tools attach local files (`file_paths`) or inline base64 files (`inline_files`). They wait up to `timeout_seconds` (default 45, under the roughly 60-second limit many MCP clients put on a tool call; `0` sends without waiting). Every result has `status`, `thread_id`, `message_id`, and (for sends) `client_message_id` at the top level. When `status` is `pending`, call `bee_wait_thread` with those ids to keep waiting. If `message_id` is null, Bee did not confirm the send in time. Call the send tool again with the same `client_message_id`; that resumes the message and never sends it twice. If a tool call is cut off, `bee_wait_thread` with just the `thread_id` resumes the wait, and `bee_list_threads` finds a new thread.
+
 ## Installation
 
 Install from npm:
@@ -90,6 +92,13 @@ import { createBeeClient } from "@beeai/cli/lib";
 
 const bee = createBeeClient();
 const profile = await bee.api.me();
+
+// Test users: chat with the Bee agent; keep waiting while status is "pending".
+type Answer = { status: string; thread_id: string; message_id: string; text?: string };
+let answer = await bee.api.threads.create<Answer>({ text: "Plan my day", timeout: 120 });
+while (answer.status === "pending") {
+  answer = await bee.api.threads.wait<Answer>(answer.thread_id, { after: answer.message_id });
+}
 
 const stream = bee.sse.streamJson({ types: ["new-utterance"] });
 for await (const event of stream.events) {
@@ -169,9 +178,21 @@ By default, data commands return markdown. Use `--json` to print raw JSON.
 - `search` - Search your Bee data.
   - `search --query <text>` - Keyword search (default) across conversations, daily summaries, and facts. Scope with `--filter conversations|daily|facts|all` and order with `--sort relevance|mostRecent`. Use `--neural` for semantic conversation search (conversations only; `--filter`/`--sort` do not apply). Bound either mode by time with `--since`/`--until` (epoch milliseconds). Options: `--limit N`, `--json`.
 
+- `threads` - Chat with the Bee agent in threads (Bee test users only).
+  - `threads list` - List threads with their id, name, and state (`idle` or `running`). Options: `--json`.
+  - `threads create --text <text>` - Start a new thread with a first message and wait for the answer. Options: `--photo <path>` and `--file <path>` (repeatable; uploaded first, max 20 per message, 25 MB each), `--timeout <duration>`, `--client-message-id <id>`, `--json`.
+  - `threads send <thread-id> --text <text>` - Send a message to an existing thread and wait for the answer. Same options as `create`.
+  - `threads wait <thread-id>` - Keep waiting for the answer. Waits after the thread's latest user message, or after `--after <message-id>`. Options: `--after <message-id>`, `--timeout <duration>`, `--json`.
+  - `threads messages <thread-id>` - Show the thread's messages, oldest first. Options: `--limit N` (latest N), `--json`.
+  - `threads abort <thread-id>` - Stop the agent's current work on the thread. Options: `--json`.
+
+  `--timeout` bounds the whole send and wait, e.g. `30s`, `5m`, or `1h` (a bare number is seconds). It defaults to `90s`, and `0` sends without waiting. Server waits, HTTP timeouts and retries all end by the deadline. The only exception is the send itself: it always gets at least 10 seconds, so `0` still delivers the message. Uploads come first and are not counted. Longer waits are split into server calls of up to 55 seconds. When the answer is not ready in time, the command still succeeds: it prints the thread id, the message id, `status: pending`, and a `bee threads wait <thread-id>` hint. A `stalled` status means the agent has not reported progress for a while: wait again, or abort and send again. The answer text comes first in markdown output; `--json` prints the full payload (`status`, `thread_id`, `message_id`, `client_message_id`, `hint`, `text`, `messages`, `files`).
+
+  Each send carries a `client_message_id`, generated unless you pass `--client-message-id`. It is printed with every result and in any error after which the message may have been stored. Retries reuse it, so a message is never sent twice. Re-running the same command with `--client-message-id <id>` resumes that message instead of sending a new one. That also covers a send Bee did not confirm in time, shown with `message_id: (not confirmed)`. Re-running `create` with the same id returns the same thread. Photos and files are uploaded before the message is sent; if any upload fails, nothing is sent. Attaching them requires the Bee agent consent in the Bee app.
+
 - `mcp` - Run or connect the MCP server (see [Use Bee with AI assistants](#use-bee-with-ai-assistants-mcp)). Subcommands: `serve`, `serve-http [--port N] [--token VALUE]`, `connect|disconnect <claude|claude-code|codex>`, `status`.
 
-- `sync` - Export your Bee data to markdown files for AI agents. Re-runs are incremental by default (only changed daily summaries/conversations are re-fetched). Options: `--output <dir>`, `--recent-days N`, `--only <facts|todos|daily|conversations>`, `--full`, `--since <epochMs>`.
+- `sync` - Export your Bee data to markdown files for AI agents. Re-runs are incremental by default (only changed daily summaries, conversations, and insights are re-fetched). Options: `--output <dir>`, `--recent-days N`, `--only <facts|todos|daily|conversations|insights>`, `--full`, `--since <epochMs>`.
 
 - `proxy` - Start a local Bee API proxy. Options: `--port N`, `--socket [path]`, `--idle-timeout SECONDS`.
 
@@ -408,12 +429,12 @@ The `sync` command exports all your Bee data to a local directory as markdown fi
 ### Usage
 
 ```bash
-bee sync [--output <dir>] [--recent-days N] [--only <facts|todos|daily|conversations>] [--full] [--since <epochMs>]
+bee sync [--output <dir>] [--recent-days N] [--only <facts|todos|daily|conversations|insights>] [--full] [--since <epochMs>]
 ```
 
 After a first sync, re-running `bee sync` on the same output directory is
-**incremental**: it re-fetches only the daily summaries and conversations that
-have changed since the last run (facts and todos are always re-fetched in full,
+**incremental**: it re-fetches only the daily summaries, conversations, and
+insights that have changed since the last run (facts and todos are always re-fetched in full,
 since they are small). Sync state is tracked in a `.bee-sync.json` manifest
 inside the output directory; delete it (or the directory) to force a full
 re-sync.
@@ -423,8 +444,8 @@ re-sync.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--output <dir>` | `bee-sync` | Output directory for synced files |
-| `--recent-days N` | all | Limit daily summaries and conversations to the last N days (facts and todos are always synced in full). Applies to full syncs only; ignored on an incremental run |
-| `--only <targets>` | all | Limit sync to a comma-separated list: `facts`, `todos`, `daily`, `conversations` (or `all`) |
+| `--recent-days N` | all | Limit daily summaries, conversations, and insights to the last N days (facts and todos are always synced in full). Applies to full syncs only; ignored on an incremental run |
+| `--only <targets>` | all | Limit sync to a comma-separated list: `facts`, `todos`, `daily`, `conversations`, `insights` (or `all`) |
 | `--full` | off | Force a complete re-sync, ignoring the saved manifest, and rewrite it with fresh cursors |
 | `--since <epochMs>` | — | Advanced/recovery: override the saved incremental cursor with an explicit epoch-milliseconds timestamp for changefeed-driven targets |
 
@@ -437,11 +458,14 @@ bee-sync/
 ├── daily/
 │   └── YYYY-MM-DD/       # One folder per day
 │       └── summary.md    # Daily summary
-└── conversations/
-    └── YYYY-MM-DD/       # One folder per day
-        ├── 123.md        # Individual conversation files
-        ├── 456.md
-        └── ...
+├── conversations/
+│   └── YYYY-MM-DD/       # One folder per day
+│       ├── 123.md        # Individual conversation files
+│       ├── 456.md
+│       └── ...
+└── insights/
+    └── YYYY-MM-DD/       # One folder per day the insight was generated
+        └── 789.md        # Individual insight files
 ```
 
 ### File Formats
@@ -578,6 +602,28 @@ Each conversation file includes:
 - Suggested links extracted from the conversation
 - Full transcription with speaker labels
 
+#### insights/YYYY-MM-DD/ID.md
+
+Individual insights Bee generated about you.
+
+```markdown
+# Insight 789 — Morning focus blocks
+
+- id: 789
+- generated_at: 2024-01-15T16:00:00.000Z
+
+## Description
+
+You do your deepest work before 11am on days without early meetings.
+
+## Suggested Actions
+
+- Block 9-11am for focused work on Tuesdays and Thursdays.
+```
+
+Insights you dismissed or marked inaccurate in the app are not synced. A
+`## Corrections` section is added when an insight has corrections.
+
 ### Examples
 
 Sync to the default directory:
@@ -607,7 +653,7 @@ bee sync --recent-days 7
 ### Notes
 
 - The first sync (or `--full`) fetches everything; facts and todos are always re-fetched in full
-- Re-runs are incremental: only daily summaries and conversations that changed since the last run are re-fetched, tracked via the `.bee-sync.json` manifest in the output directory
+- Re-runs are incremental: only daily summaries, conversations, and insights that changed since the last run are re-fetched, tracked via the `.bee-sync.json` manifest in the output directory
 - Conversations and daily summaries are fetched concurrently for faster syncing
 - All timestamps are in ISO 8601 format (UTC)
 - The output directory is created if it doesn't exist

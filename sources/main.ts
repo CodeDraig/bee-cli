@@ -3,6 +3,7 @@ import { activityCommand } from "@/commands/activity";
 import { conversationsCommand } from "@/commands/conversations";
 import { dailyCommand } from "@/commands/daily";
 import { changedCommand } from "@/commands/changed";
+import { externalAccessCommand } from "@/commands/externalAccess";
 import { factsCommand } from "@/commands/facts";
 import { insightsCommand } from "@/commands/insights";
 import { journalsCommand } from "@/commands/journals";
@@ -19,6 +20,7 @@ import { searchCommand } from "@/commands/search";
 import { statusCommand } from "@/commands/status";
 import { streamCommand } from "@/commands/stream";
 import { syncCommand } from "@/commands/sync";
+import { threadsCommand } from "@/commands/threads";
 import { todosCommand } from "@/commands/todos";
 import { todayCommand } from "@/commands/today";
 import { versionCommand } from "@/commands/version";
@@ -38,6 +40,7 @@ const commands = [
   changedCommand,
   conversationsCommand,
   dailyCommand,
+  externalAccessCommand,
   factsCommand,
   insightsCommand,
   journalsCommand,
@@ -48,6 +51,7 @@ const commands = [
   streamCommand,
   syncCommand,
   proxyCommand,
+  threadsCommand,
   todosCommand,
   pingCommand,
   versionCommand,

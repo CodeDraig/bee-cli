@@ -11,6 +11,7 @@ import type { ResourceModule } from "@/resources/types";
 import { activityResource } from "@/resources/activity";
 import { conversationsResource } from "@/resources/conversations";
 import { dailyResource } from "@/resources/daily";
+import { externalAccessResource } from "@/resources/externalAccess";
 import { factsResource } from "@/resources/facts";
 import { insightsResource } from "@/resources/insights";
 import { journalsResource } from "@/resources/journals";
@@ -18,6 +19,7 @@ import { locationsResource } from "@/resources/locations";
 import { photosResource } from "@/resources/photos";
 import { searchResource } from "@/resources/search";
 import { statusResource } from "@/resources/status";
+import { threadsResource } from "@/resources/threads";
 import { todayResource } from "@/resources/today";
 import { todosResource } from "@/resources/todos";
 
@@ -27,11 +29,13 @@ export const RESOURCES: readonly ResourceModule[] = [
   activityResource,
   conversationsResource,
   dailyResource,
+  externalAccessResource,
   factsResource,
   insightsResource,
   journalsResource,
   locationsResource,
   photosResource,
   searchResource,
+  threadsResource,
   todosResource,
 ];
